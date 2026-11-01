@@ -111,3 +111,16 @@ When Play is pressed:
 3. Process selected topics in bank source order.
 4. Copy each topic's candidate sequence.
 5. In shuffle mode, shuffle the copied sequence.
+
+## Build dependencies
+
+The desktop application builds as a native binary through cgo:
+
+    cmd/quizzer -> fyne app -> internal driver/glfw -> go-gl/glfw bindings
+        -> bundled GLFW C sources -> X11/GL from the pinned sysroot
+
+A Go module that includes C sources relative to its module root needs a hand
+written BUILD file, because rules_go compiles the generated cgo translation
+unit outside the module directory. GLFW's is kept under `third_party/glfw/`
+and injected with `gazelle_override` and `module_override` in
+`MODULE.bazel`.

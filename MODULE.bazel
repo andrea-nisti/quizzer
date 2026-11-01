@@ -50,3 +50,15 @@ use_repo(
     go_deps,
     "io_fyne_fyne_v2",
 )
+
+# The GLFW bindings include their bundled C sources relative to the module
+# root; give the module the hand written BUILD file in third_party/glfw.
+go_deps.gazelle_override(
+    build_file_generation = "off",
+    path = "github.com/go-gl/glfw/v3.3/glfw",
+)
+go_deps.module_override(
+    patch_strip = 1,
+    patches = ["//third_party/glfw:glfw.patch"],
+    path = "github.com/go-gl/glfw/v3.3/glfw",
+)

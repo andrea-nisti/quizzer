@@ -68,3 +68,18 @@ generate `go.sum`.
 
 Write project `BUILD.bazel` files by hand; Gazelle is used for external Go
 dependency management, not for generating project BUILD files.
+
+## Native dependencies (cgo)
+
+The Fyne desktop driver reaches GLFW through cgo. Its headers and libraries
+come from the pinned `chrome-linux-sysroot`, so no host development packages
+are needed.
+
+The GLFW bindings textually include their bundled C sources relative to the
+module root, which rules_go cannot resolve. The module therefore uses a hand
+written BUILD file, kept in `third_party/glfw/`. Edit
+`third_party/glfw/glfw.BUILD.bazel` and regenerate the patch with:
+
+```sh
+diff -u --label /dev/null --label b/BUILD.bazel /dev/null third_party/glfw/glfw.BUILD.bazel > third_party/glfw/glfw.patch
+```
