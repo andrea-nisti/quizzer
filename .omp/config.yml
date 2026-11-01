@@ -1,0 +1,22 @@
+# quizzer/.omp/config.yml
+modelRoleStorage: project
+
+modelRoles:
+  default: openrouter/minimax/minimax-m3.1-flash
+  task: openrouter/qwen/qwen3-coder-next
+
+  smol: openrouter/anthropic/claude-haiku-5.5
+  tiny: "@smol"
+  commit: "@smol"
+
+  vision: "@default"
+  designer: "@default"
+
+  plan: openrouter/deepseek/deepseek-v3.2
+  slow: openrouter/anthropic/claude-sonnet-5.5
+  advisor: "@slow"
+
+cycleOrder:
+  - default
+  - slow
+  - smol

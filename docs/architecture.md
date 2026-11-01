@@ -1,0 +1,113 @@
+# Architecture
+
+Status: initial design. Keep aligned with implementation.
+
+## Overview
+
+Quizzer is an offline Go/Fyne application.
+
+External JSON files supply question banks. Users create quiz definitions
+from those banks. Pressing Play constructs a new practice session from
+a definition.
+
+The MVP has no backend service or database.
+Banks, definitions, and sessions live in memory.
+
+Product requirements are defined in product.md.
+The import contract is defined in question-format.md.
+
+## Components
+
+- cmd/quizzer: startup and dependency wiring.
+- internal/quiz: domain models, validation, session construction,
+  grading, and practice transitions; standard library only.
+- internal/importer: JSON decoding and mapping into domain models.
+- internal/service: bank registration, quiz management, and session lifecycle.
+- internal/ui: Fyne views, menus, file selection, and presentation state.
+
+Create packages when needed, not as empty scaffolding.
+
+Dependency direction:
+
+    cmd/quizzer -> ui, service
+    ui -> service, quiz
+    service -> importer, quiz
+    importer -> quiz
+
+Domain code must not depend on Fyne, JSON encoding details, or storage.
+Introduce interfaces only where substitution or isolation is useful.
+
+## Data ownership
+
+### Question bank
+
+Contains topics and their questions in source order.
+
+Treat registered banks as immutable during the MVP.
+Quiz construction and practice must not mutate bank content.
+
+### Quiz definition
+
+Contains:
+
+- Identity and display name.
+- Bank reference.
+- Selected topic references.
+- Ordered or shuffle mode.
+- Maximum questions per topic.
+
+Definitions describe session construction.
+They do not store a sampled sequence, submitted answers, or results.
+
+The service owns the in-memory bank and quiz collections.
+
+### Practice session
+
+Contains:
+
+- Source quiz identity.
+- Fixed question sequence.
+- Current question position.
+- Submitted answers and results.
+- Completion state.
+
+Each Play action creates fresh session state.
+Rendering and navigation must not resample questions.
+
+## Application flow
+
+### Startup
+
+Create application services and display an empty quiz list.
+Do not preload embedded question banks or example quizzes.
+
+The + button opens an action menu containing Add quiz.
+
+### Import and quiz creation
+
+1. The UI collects a quiz name and obtains a bank through file import
+   or selection from registered banks.
+2. The importer decodes and validates imported content.
+3. The service registers successfully imported banks.
+4. The user selects topics and configures the quiz.
+5. The service validates and adds the completed definition.
+6. The UI updates the quiz list and exposes Play.
+
+Pass an io.Reader into the importer, not a Fyne file type.
+The caller closes the selected file.
+
+Failed imports leave existing state unchanged.
+Canceling quiz creation leaves no partial definition.
+
+Registering a new bank must not silently overwrite a bank referenced
+by existing definitions.
+
+### Session construction
+
+When Play is pressed:
+
+1. Resolve the definition and referenced bank/topics.
+2. Validate selection and question limits.
+3. Process selected topics in bank source order.
+4. Copy each topic's candidate sequence.
+5. In shuffle mode, shuffle the copied sequence.

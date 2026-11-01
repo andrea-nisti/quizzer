@@ -1,0 +1,13 @@
+load("@rules_go//go:def.bzl", "go_path")
+
+exports_files(["go.mod"])
+
+alias(
+    name = "go",
+    actual = "@rules_go//go:go",
+)
+
+go_path(
+    name = "gopath",
+    deps = ["@io_fyne_fyne_v2//:fyne"],
+)

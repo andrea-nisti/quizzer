@@ -1,0 +1,6 @@
+{
+    "go.alternateTools": {
+        "go": "${workspaceFolder}/tools/go"
+    },
+    "go.useLanguageServer": true
+}
