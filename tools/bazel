@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WORKSPACE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$WORKSPACE_ROOT"
+BAZEL_BIN="${BAZEL_REAL:-$(type -P bazel || true)}"
+if [[ -z "$BAZEL_BIN" ]]; then
+	echo "bazel: executable not found on PATH; set BAZEL_REAL" >&2
+	exit 127
+fi
+
+if [[ "$(readlink -f "$BAZEL_BIN")" == "$(readlink -f "${BASH_SOURCE[0]}")" ]]; then
+	echo "BAZEL_REAL resolves to tools/bazel; set it to the real Bazel executable" >&2
+	exit 127
+fi
+
+if [[ $# -eq 0 ]]; then
+	exec "$BAZEL_BIN"
+fi
+
+if [[ "$1" == "info" || "$1" == "shutdown" || "$1" == "version" || "$1" == "help" ]]; then
+	exec "$BAZEL_BIN" "$@"
+fi
+
+BAZEL_JAVA_HOME="$("$BAZEL_BIN" info java-home)"
+unset JAVA_HOME
+
+BAZEL_ARGS=("$@")
+if [[ "${BAZEL_ARGS[0]}" == "mod" ]]; then
+	BAZEL_ARGS=("${BAZEL_ARGS[0]}" "${BAZEL_ARGS[1]}" "--repo_env=JAVA_HOME=$BAZEL_JAVA_HOME" "${BAZEL_ARGS[@]:2}")
+else
+	BAZEL_ARGS=("${BAZEL_ARGS[0]}" "--repo_env=JAVA_HOME=$BAZEL_JAVA_HOME" "${BAZEL_ARGS[@]:1}")
+fi
+
+exec "$BAZEL_BIN" "${BAZEL_ARGS[@]}"
