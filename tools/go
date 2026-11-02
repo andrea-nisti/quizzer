@@ -4,4 +4,16 @@ set -euo pipefail
 WORKSPACE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WORKSPACE_ROOT"
 BAZEL_BIN="$WORKSPACE_ROOT/tools/bazel"
-exec "$BAZEL_BIN" run --noshow_progress //:go -- "$@"
+
+# Bazel writes its progress and summary lines to stderr. The editor reads a
+# non-empty stderr as a failure of the Go command, so hold it back and pass it
+# on only when the command fails.
+stderr_file="$(mktemp)"
+trap 'rm -f "$stderr_file"' EXIT
+
+status=0
+"$BAZEL_BIN" run --noshow_progress --ui_event_filters=-info //:go -- "$@" 2>"$stderr_file" || status=$?
+if [[ $status -ne 0 ]]; then
+	cat "$stderr_file" >&2
+fi
+exit $status

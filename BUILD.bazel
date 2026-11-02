@@ -7,7 +7,16 @@ alias(
     actual = "@rules_go//go:go",
 )
 
+alias(
+    name = "linux_x86_64",
+    actual = "@llvm//platforms:linux_x86_64",
+)
+
+# The GOPATH tree the language server reads. It holds the sources of the
+# packages the application is built from, laid out under the import paths
+# they declare, so that the editor resolves a symbol to the sources Bazel
+# builds.
 go_path(
     name = "gopath",
-    deps = ["@io_fyne_fyne_v2//:fyne"],
+    deps = ["//cmd:cmd_lib"],
 )

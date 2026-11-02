@@ -1,6 +1,42 @@
 {
     "go.alternateTools": {
-        "go": "${workspaceFolder}/tools/go"
+        "go": "${workspaceFolder}/tools/go",
+        "gopls": "${workspaceFolder}/tools/gopls"
     },
-    "go.useLanguageServer": true
+    "go.goroot": "${workspaceFolder}/bazel-${workspaceFolderBasename}/external/rules_go++go_sdk+go_sdk/",
+    "go.toolsEnvVars": {
+        "BAZEL_REAL": "${env:BAZEL_REAL}"
+    },
+    "go.enableCodeLens": {
+        "runtest": false
+    },
+    "gopls": {
+        "build.workspaceFiles": [
+            "**/BUILD",
+            "**/WORKSPACE",
+            "**/*.{bzl,bazel}"
+        ],
+        "build.directoryFilters": [
+            "-bazel-bin",
+            "-bazel-out",
+            "-bazel-testlogs",
+            "-bazel-quizzer"
+        ],
+        "formatting.gofumpt": true,
+        "formatting.local": "github.com/andrea-nisti/quizzer",
+        "ui.completion.usePlaceholders": true,
+        "ui.semanticTokens": true,
+        "ui.codelenses": {
+            "gc_details": false,
+            "regenerate_cgo": false,
+            "generate": false,
+            "test": false,
+            "tidy": false,
+            "upgrade_dependency": false,
+            "vendor": false
+        }
+    },
+    "go.useLanguageServer": true,
+    "go.lintOnSave": "off",
+    "go.vetOnSave": "off"
 }

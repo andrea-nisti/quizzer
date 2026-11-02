@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Runs gopls against the Go toolchain and the Go module repositories that
+# Bazel manages.
+#
+# The editor starts this script in place of a gopls binary. It builds the
+# GOPATH tree of the project, which holds the sources of the packages the
+# application is built from under the import paths they declare, and runs
+# gopls in GOPATH mode against that tree with the Go SDK Bazel downloaded.
+# Go to definition therefore opens the sources Bazel compiles instead of the
+# copies in the host module cache.
+set -euo pipefail
+
+WORKSPACE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$WORKSPACE_ROOT"
+
+BAZEL="$WORKSPACE_ROOT/tools/bazel"
+
+log() {
+	printf 'gopls: %s\n' "$*" >&2
+}
+
+# The host platform, in the GOOS_GOARCH form the SDK uses.
+host_platform() {
+	local os arch
+	case "$(uname -s)" in
+		Linux) os=linux ;;
+		Darwin) os=darwin ;;
+		*) os="$(uname -s | tr '[:upper:]' '[:lower:]')" ;;
+	esac
+	case "$(uname -m)" in
+		x86_64) arch=amd64 ;;
+		aarch64 | arm64) arch=arm64 ;;
+		*) arch="$(uname -m)" ;;
+	esac
+	printf '%s_%s' "$os" "$arch"
+}
+
+# The Go SDK Bazel downloaded, identified by the tool directory it carries for
+# the host platform.
+find_sdk() {
+	local candidate
+	for candidate in "$OUTPUT_BASE"/external/*go_sdk*/; do
+		if [[ -x "$candidate/bin/go" && -d "$candidate/pkg/tool/$(host_platform)" ]]; then
+			printf '%s' "${candidate%/}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The X11 and GL headers the cgo packages include. Bazel unpacks them from
+# third_party/x11 into a repository of its own.
+find_x11_include() {
+	local candidate
+	for candidate in "$OUTPUT_BASE"/external/*/; do
+		if [[ -f "$candidate/usr/include/GL/glx.h" ]]; then
+			printf '%s' "${candidate%/}/usr/include"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The gopls binary to run: the one the caller names, the one on PATH, or the
+# one the Go extension installed.
+find_gopls() {
+	local candidate
+	if [[ -n "${GOPLS:-}" ]]; then
+		if [[ -x "$GOPLS" ]]; then
+			printf '%s' "$GOPLS"
+			return 0
+		fi
+		log "GOPLS is set to $GOPLS, which is not executable"
+		return 1
+	fi
+	candidate="$(command -v gopls || true)"
+	if [[ -n "$candidate" ]]; then
+		printf '%s' "$candidate"
+		return 0
+	fi
+	for candidate in "${GOPATH:+$GOPATH/bin/gopls}" "$HOME/go/bin/gopls"; do
+		if [[ -n "$candidate" && -x "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+
+OUTPUT_BASE="$("$BAZEL" info output_base)" || {
+	log "cannot determine the Bazel output base; set BAZEL_REAL or put bazel on PATH"
+	exit 1
+}
+
+# The GOPATH tree. It holds the sources of the packages the application is
+# built from, laid out under the import paths they declare.
+if ! "$BAZEL" build //:gopath; then
+	log "warning: the GOPATH tree could not be built; the editor will see stale sources"
+fi
+GOPATH_DIR="$("$BAZEL" info bazel-bin)/gopath"
+
+# A second entry with this repository itself, so that the imports between the
+# packages of the project resolve to the files in the workspace and not to the
+# copies the tree holds.
+MAIN_MODULE="$(awk '$1 == "module" { gsub(/"/, "", $2); print $2; exit }' go.mod)"
+PROJECT_GOPATH="$OUTPUT_BASE/gopath-project"
+mkdir -p "$PROJECT_GOPATH/src/$(dirname "$MAIN_MODULE")"
+rm -rf "$PROJECT_GOPATH/src/$MAIN_MODULE"
+ln -sfn "$WORKSPACE_ROOT" "$PROJECT_GOPATH/src/$MAIN_MODULE"
+
+SDK="$(find_sdk)" || {
+	log "cannot find the Go SDK Bazel downloaded; run 'bazel build //...' first"
+	exit 1
+}
+
+GOPLS_BIN="$(find_gopls)" || {
+	log "gopls is not installed; install it with 'brew install gopls'"
+	exit 1
+}
+
+export GOROOT="$SDK"
+# gopls looks the Go command up in PATH, so the SDK Bazel downloaded has to be
+# on it. Without it the language server has no toolchain and loads no package.
+export PATH="$GOROOT/bin:$PATH"
+export GOPATH="$PROJECT_GOPATH:$GOPATH_DIR"
+export GO111MODULE=off
+export GOFLAGS=
+export GOWORK=off
+export GOTOOLCHAIN=local
+if X11_INCLUDE="$(find_x11_include)"; then
+	export CGO_CFLAGS="-I$X11_INCLUDE${CGO_CFLAGS:+ $CGO_CFLAGS}"
+fi
+
+exec "$GOPLS_BIN" "$@"

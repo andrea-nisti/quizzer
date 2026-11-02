@@ -49,6 +49,76 @@ VS Code's Go extension uses this wrapper as its alternate Go executable, so
 editor Go commands also use the Bazel-managed SDK. The wrapper does not locate
 or invoke a host Go installation.
 
+The wrapper needs Bazelisk on `PATH`. An editor started from the desktop does
+not inherit the shell's `PATH`, so either start it from a shell or point it at
+the executable:
+
+```sh
+export BAZEL_REAL="$(command -v bazel)"
+code .
+```
+
+`tools/bazel` uses `bazel` from `PATH` unless `BAZEL_REAL` points elsewhere, and
+`.vscode/settings.json` forwards `BAZEL_REAL` from the editor's environment.
+
+## Editor Setup
+
+The Go language server reads the toolchain and the sources Bazel manages, so
+that Go to definition opens the code the build compiles instead of a copy in
+the host module cache.
+
+`tools/gopls` is the launcher the editor runs in place of a gopls binary. It
+builds `//:gopath`, the GOPATH tree of the project, and starts gopls in GOPATH
+mode against that tree with the Go SDK Bazel downloaded. The tree holds the
+sources of the packages the application is built from under the import paths
+they declare, so a symbol resolves to the sources Bazel builds. The launcher
+adds the SDK to `PATH`, because gopls looks the Go command up there, and points
+the cgo compile at the X11 and GL headers Bazel unpacks from `third_party/x11`.
+
+`.vscode/settings.json` points the Go extension at the launcher:
+
+```json
+"go.alternateTools": {
+    "go": "${workspaceFolder}/tools/go",
+    "gopls": "${workspaceFolder}/tools/gopls"
+}
+```
+
+The language server itself is a program of the system; the launcher looks for it
+on `PATH`:
+
+```sh
+brew install gopls
+```
+
+The launcher also needs the Bazel executable, so an editor started from the
+desktop has to be told where it is:
+
+```sh
+export BAZEL_REAL="$(command -v bazel)"
+code .
+```
+
+The `go_path` rule that builds the tree needs the packages of the project to
+carry an import path, so every package of the project has a `go_library` with
+one; `cmd/BUILD.bazel` shows the pattern.
+
+### One Output Base
+
+Bazel keeps the output base, the downloaded SDKs and the module repositories
+under the output user root. It takes that directory from the cache directory
+of the environment it runs in, and an editor started from the desktop
+environment can see a different one than the shell does. The editor then works
+on its own copy of every repository, and resolves a symbol to a different path
+than the shell does.
+
+`user.bazelrc` pins the output user root, and the workspace `.bazelrc` imports
+it with `try-import`. The file is not tracked, so each machine sets its own:
+
+```
+startup --output_user_root=/home/user/.cache/bazel
+```
+
 ## Go Dependencies
 
 Go module requirements live in `go.mod`; Gazelle's `go_deps` extension reads it

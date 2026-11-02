@@ -5,7 +5,8 @@ WORKSPACE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WORKSPACE_ROOT"
 BAZEL_BIN="${BAZEL_REAL:-$(type -P bazel || true)}"
 if [[ -z "$BAZEL_BIN" ]]; then
-	echo "bazel: executable not found on PATH; set BAZEL_REAL" >&2
+	echo "bazel: executable not found on PATH; set BAZEL_REAL to the Bazel (Bazelisk) executable" >&2
+	echo "  editors started outside a shell do not inherit PATH: set BAZEL_REAL or start them from a shell" >&2
 	exit 127
 fi
 
