@@ -1,0 +1,11 @@
+exports_files(["x11_sysroot.bzl"])
+
+# Gazelle-generated repos (GLFW, go-gl/gl) reference the X11/GL artifact through
+# this alias: their repo mapping cannot resolve the main module's repo names, so
+# they use the canonical label @@//third_party/x11:x11_gl, and this alias
+# performs the name lookup in the main module's mapping.
+alias(
+    name = "x11_gl",
+    actual = "@x11_sysroot//:x11_gl",
+    visibility = ["//visibility:public"],
+)

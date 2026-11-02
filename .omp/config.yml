@@ -12,7 +12,7 @@ modelRoles:
   vision: "@default"
   designer: "@default"
 
-  plan: openrouter/deepseek/deepseek-v3.2
+  plan: openrouter/deepseek/deepseek-v4.1-flash
   slow: openrouter/anthropic/claude-sonnet-5.5
   advisor: "@slow"
 

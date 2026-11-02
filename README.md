@@ -5,15 +5,17 @@ bootstrapped; the product plan is in [docs/product.md](docs/product.md).
 
 ## Host Requirements
 
-- Linux x86_64; the configured C toolchain and sysroot target this platform.
+- Linux x86_64 host. Targets are linux/amd64 (native) and windows/amd64 (cgo
+  cross-compilation).
 - Bash and `readlink -f` for the `tools/` wrapper scripts.
 - Install Bazelisk as `bazel` on `PATH`. It honors `.bazelversion` and
-automatically invokes the checked-in Bazel wrapper with the selected Bazel
-binary.
-- Network access on initial builds so Bazel can download the pinned SDKs, toolchain, sysroot, and dependencies.
+  automatically invokes the checked-in Bazel wrapper with the selected Bazel
+  binary.
+- Network access on initial builds so Bazel can download the pinned SDKs, toolchain, and dependencies.
 
 No separate host Go, Java, clang, linker, or C development headers are needed;
-these are supplied by the Bazel-managed Go SDK, Bazel runtime, and C toolchain.
+these are supplied by the Bazel-managed Go SDK, Bazel runtime, and the `llvm`
+C toolchain for both targets.
 
 ## Bazel Commands
 
@@ -26,6 +28,7 @@ rules such as Coursier do not depend on host Java.
 ```sh
 bazel fetch //...
 bazel build //cmd:main
+bazel build --config=windows //cmd:main
 bazel mod tidy
 ```
 
@@ -71,15 +74,73 @@ dependency management, not for generating project BUILD files.
 
 ## Native dependencies (cgo)
 
-The Fyne desktop driver reaches GLFW through cgo. Its headers and libraries
-come from the pinned `chrome-linux-sysroot`, so no host development packages
-are needed.
+The Fyne desktop driver reaches GLFW through cgo. One hermetic C toolchain serves
+both targets: the `llvm` Bzlmod module registers clang for linux/amd64 and
+cross-builds the runtimes it links against (glibc, libc++, compiler-rt,
+MinGW-w64), so no host compiler or C development headers are involved. `.bazelrc`
+pins `build --platforms=@llvm//platforms:linux_x86_64` and defines the Windows
+platform under `--config=windows`.
 
-The GLFW bindings textually include their bundled C sources relative to the
-module root, which rules_go cannot resolve. The module therefore uses a hand
-written BUILD file, kept in `third_party/glfw/`. Edit
-`third_party/glfw/glfw.BUILD.bazel` and regenerate the patch with:
+cgo is mandatory for both builds (`pure = "off"` in `cmd/BUILD.bazel`). Without it
+rules_go silently falls back to a pure-Go variant whenever no C toolchain
+resolves, and the failure then shows up inside the GLFW bindings instead of at
+toolchain resolution.
+
+To build for Linux:
+
+```sh
+bazel build //cmd:main
+```
+
+To build for Windows/amd64 with cgo:
+
+```sh
+bazel build --config=windows //cmd:main
+```
+
+which is equivalent to:
+
+```sh
+bazel build --platforms=@rules_go//go/toolchain:windows_amd64_cgo //cmd:main
+```
+
+### X11/GL development files
+
+The `llvm` module ships no X11/GL, so Linux takes them from `@x11_sysroot`: the
+repository rule in `third_party/x11/x11_sysroot.bzl` downloads the pinned
+chrome-linux-sysroot archive (sha256 `f851add7…`) and keeps only
+`usr/include/{X11,GL,EGL,KHR,GLES*,vulkan}` plus the unversioned `.so` names.
+Two properties drive that pruning:
+
+- rules_go forwards a `cdeps` include path as `-I`, which is searched before the
+  toolchain's `-isystem` paths; keeping the archive's glibc headers would shadow
+  the toolchain's own libc.
+- rules_go puts every linked shared library on the binary's `RUNPATH`; because
+  only the unversioned names survive, the linker reads their SONAMEs
+  (`libX11.so.6`, `libGL.so.1`, …) and the loader falls back to the system's copy
+  instead of loading a partial copy of the graphics stack.
+
+The link is pinned by the artifact; the binary runs against the system libraries.
+
+### Hand-written module BUILD files
+
+`go-gl/glfw` includes its bundled C sources relative to the module root, which
+rules_go cannot resolve, and `go-gl/gl` includes `<GL/glx.h>` and
+`<KHR/khrplatform.h>` with no include path of its own. Both modules therefore get
+a hand-written BUILD file, kept in `third_party/glfw/` and `third_party/gl/` and
+injected with `gazelle_override` + `module_override` (`build_file_generation =
+"off"`, `patch_strip = 1`). They reach the artifact through the canonical label
+`@@//third_party/x11:x11_gl`: a Gazelle-generated repository cannot resolve the
+main module's repository names, so `third_party/x11/BUILD.bazel` holds an `alias`
+that performs the lookup in the main module's mapping.
+
+Edit a BUILD file and regenerate its patch:
 
 ```sh
 diff -u --label /dev/null --label b/BUILD.bazel /dev/null third_party/glfw/glfw.BUILD.bazel > third_party/glfw/glfw.patch
+diff -u --label /dev/null --label b/v2.1/gl/BUILD.bazel /dev/null third_party/gl/gl.BUILD.bazel > third_party/gl/gl.patch
 ```
+
+The `b/` path is the BUILD file's location inside the module, because the patches
+apply with `patch_strip = 1`; GLFW's BUILD sits at the module root, go-gl/gl's
+under `v2.1/gl/`.
