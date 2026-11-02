@@ -7,13 +7,14 @@ bazel_dep(name = "rules_go", version = "0.65.0")
 bazel_dep(name = "gazelle", version = "0.51.3")
 bazel_dep(name = "llvm", version = "0.8.0")
 
-# Direct dependency: the generated @x11_sysroot BUILD and the injected module
-# BUILD files load their cc rules from @rules_cc.
+# Direct dependency: the vendored X11/GL package and the injected module BUILD
+# files load their cc rules from @rules_cc.
 bazel_dep(name = "rules_cc", version = "0.2.18")
 
 # One hermetic C toolchain for both targets: the llvm module cross builds the
 # glibc and MinGW-w64 runtimes it links against, so libc needs no sysroot pin.
-# X11/GL development files are not part of it and come from @x11_sysroot.
+# X11/GL development files are not part of it; they are vendored under
+# third_party/x11.
 llvm_toolchains = use_extension("@llvm//extensions:toolchain.bzl", "toolchain")
 llvm_toolchains.exec(
     arch = "x86_64",
@@ -31,16 +32,13 @@ use_repo(llvm_toolchains, "llvm_toolchains")
 
 register_toolchains("@llvm_toolchains//:all")
 
-# The chrome-linux-sysroot packaged X11/GL beside its libc; only the X11/GL
-# subset is still needed, so third_party/x11 prunes the tree it extracts.
-x11_sysroot = use_repo_rule("//third_party/x11:x11_sysroot.bzl", "x11_sysroot")
+# The X11/GL development files are vendored as an archive under third_party/x11
+# (tracked with git LFS); this unpacks it into a local repository.
+x11 = use_repo_rule("//third_party/x11:x11.bzl", "x11")
 
-x11_sysroot(
-    name = "x11_sysroot",
-    sha256 = "f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e",
-    urls = [
-        "https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e",
-    ],
+x11(
+    name = "x11_gl",
+    archive = "//third_party/x11:x11-gl.tar.xz",
 )
 
 go_sdk = use_extension(

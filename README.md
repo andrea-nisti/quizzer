@@ -106,21 +106,23 @@ bazel build --platforms=@rules_go//go/toolchain:windows_amd64_cgo //cmd:main
 
 ### X11/GL development files
 
-The `llvm` module ships no X11/GL, so Linux takes them from `@x11_sysroot`: the
-repository rule in `third_party/x11/x11_sysroot.bzl` downloads the pinned
-chrome-linux-sysroot archive (sha256 `f851add7…`) and keeps only
-`usr/include/{X11,GL,EGL,KHR,GLES*,vulkan}` plus the unversioned `.so` names.
-Two properties drive that pruning:
+The `llvm` module ships no X11/GL, and the host has no development files for
+them either, so they are vendored here: `third_party/x11/x11-gl.tar.xz` holds
+the X11, GL, EGL, KHR and GLES headers that GLFW's cgo bindings include, plus
+the unversioned `libX11.so`, `libGL.so`, `libEGL.so` and friends the link
+resolves against. The archive is tracked with git LFS, and the repository rule
+in `third_party/x11/x11.bzl` unpacks it into a local repository; the
+`x11_gl` target in `third_party/x11/BUILD.bazel` aliases it for the injected
+module BUILD files. `third_party/x11/README.md` records where the files came
+from and their licenses.
 
-- rules_go forwards a `cdeps` include path as `-I`, which is searched before the
-  toolchain's `-isystem` paths; keeping the archive's glibc headers would shadow
-  the toolchain's own libc.
-- rules_go puts every linked shared library on the binary's `RUNPATH`; because
-  only the unversioned names survive, the linker reads their SONAMEs
-  (`libX11.so.6`, `libGL.so.1`, …) and the loader falls back to the system's copy
-  instead of loading a partial copy of the graphics stack.
-
-The link is pinned by the artifact; the binary runs against the system libraries.
+The shared objects are link-time only. rules_go puts every linked shared library
+on the binary's `RUNPATH`, so vendoring the runtime libraries would load a
+partial copy of the graphics stack next to the system's driver stack — the
+artifact's 2021-era glvnd `libGL` beside the host's `libGLX` crashed the app at
+startup. The vendored files keep the unversioned names only, so the linker
+records their SONAMEs (`libX11.so.6`, `libGL.so.1`) and the loader resolves
+those from the system.
 
 ### Hand-written module BUILD files
 

@@ -123,7 +123,7 @@ sysroot is pinned.
 ### Linux/amd64 (native)
 
     cmd/quizzer -> fyne app -> internal driver/glfw -> go-gl/glfw, go-gl/gl
-        -> bundled GLFW C sources -> X11/GL from @x11_sysroot
+        -> bundled GLFW C sources -> X11/GL from third_party/x11
         -> glibc and libc++ from the llvm module
 
 ### Windows/amd64 (cgo cross-compilation)
@@ -133,12 +133,15 @@ sysroot is pinned.
 
 Two build-time indirections carry the Linux-only C dependencies:
 
-- `@x11_sysroot` (`third_party/x11/x11_sysroot.bzl`) unpacks the pinned
-  chrome-linux-sysroot archive and prunes it to the X11/GL headers and the
-  unversioned `.so` names. It is link-time only: rules_go forwards a `cdeps`
-  include path as `-I`, which would shadow the toolchain's libc headers, and it
-  puts linked shared libraries on the binary's `RUNPATH`, so a runtime copy of the
-  graphics stack would mix with the system's driver stack.
+- The X11/GL development files are vendored as the git LFS archive
+  `third_party/x11/x11-gl.tar.xz`; the repository rule in
+  `third_party/x11/x11.bzl` unpacks it into a local repository, and
+  `third_party/x11/BUILD.bazel` aliases its `x11_gl` target. The archive holds
+  the headers the cgo compile includes plus the unversioned shared objects the
+  link resolves against. Those objects are link-time only, because rules_go
+  forwards a `cdeps` include path as `-I` (which would shadow the toolchain's
+  libc headers) and puts linked shared libraries on the binary's `RUNPATH` (a
+  runtime copy of the graphics stack would mix with the system's driver stack).
 - The injected module BUILD files under `third_party/glfw/` and `third_party/gl/`
   exist because rules_go compiles the generated cgo translation unit outside the
   module directory: GLFW's sources include each other relative to the module root,
