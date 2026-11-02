@@ -7,4 +7,5 @@ go_binary(
         "@io_fyne_fyne_v2//app",
         "@io_fyne_fyne_v2//widget",
     ],
+    pure = "off",
 )

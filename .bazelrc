@@ -1,2 +1,5 @@
 common --repo_env=JAVA_HOME
 common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+# Pins the glibc baseline the llvm module links against.
+build --platforms=@llvm//platforms:linux_x86_64
+build:windows --platforms=@rules_go//go/toolchain:windows_amd64_cgo

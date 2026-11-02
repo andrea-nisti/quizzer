@@ -114,13 +114,37 @@ When Play is pressed:
 
 ## Build dependencies
 
-The desktop application builds as a native binary through cgo:
+The desktop application builds as a native binary through cgo. Both targets share
+one hermetic C toolchain: the `llvm` Bzlmod module is registered for exec
+linux/x86_64 against targets linux/x86_64 and windows/amd64, and cross-builds the
+runtimes it links against (glibc, libc++, compiler-rt, MinGW-w64). No libc
+sysroot is pinned.
 
-    cmd/quizzer -> fyne app -> internal driver/glfw -> go-gl/glfw bindings
-        -> bundled GLFW C sources -> X11/GL from the pinned sysroot
+### Linux/amd64 (native)
 
-A Go module that includes C sources relative to its module root needs a hand
-written BUILD file, because rules_go compiles the generated cgo translation
-unit outside the module directory. GLFW's is kept under `third_party/glfw/`
-and injected with `gazelle_override` and `module_override` in
-`MODULE.bazel`.
+    cmd/quizzer -> fyne app -> internal driver/glfw -> go-gl/glfw, go-gl/gl
+        -> bundled GLFW C sources -> X11/GL from @x11_sysroot
+        -> glibc and libc++ from the llvm module
+
+### Windows/amd64 (cgo cross-compilation)
+
+    cmd/quizzer -> fyne app -> internal driver/glfw -> go-gl/glfw, go-gl/gl
+        -> bundled GLFW C sources -> MinGW-w64 CRT and clang from the llvm module
+
+Two build-time indirections carry the Linux-only C dependencies:
+
+- `@x11_sysroot` (`third_party/x11/x11_sysroot.bzl`) unpacks the pinned
+  chrome-linux-sysroot archive and prunes it to the X11/GL headers and the
+  unversioned `.so` names. It is link-time only: rules_go forwards a `cdeps`
+  include path as `-I`, which would shadow the toolchain's libc headers, and it
+  puts linked shared libraries on the binary's `RUNPATH`, so a runtime copy of the
+  graphics stack would mix with the system's driver stack.
+- The injected module BUILD files under `third_party/glfw/` and `third_party/gl/`
+  exist because rules_go compiles the generated cgo translation unit outside the
+  module directory: GLFW's sources include each other relative to the module root,
+  and `go-gl/gl` includes `<GL/glx.h>` and `<KHR/khrplatform.h>` without an
+  include path. They are injected with `gazelle_override` and `module_override`
+  (`patch_strip = 1`) and reach the artifact through the canonical label
+  `@@//third_party/x11:x11_gl`, since a Gazelle-generated repository cannot resolve
+  the main module's repository names; `third_party/x11/BUILD.bazel` holds the
+  `alias` that resolves them in the main module's mapping.
